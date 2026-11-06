@@ -29,6 +29,7 @@ import { POWER_UPS, THRALLS, getPowerUp } from "../content/powerups";
 import { RAID_PORTAL_LOC } from "../content/raids";
 import { RANDOM_EVENTS, VISITOR_SPOTANIM } from "../content/randomEvents";
 import { PlayerStance, getPlayerStance } from "../content/stances";
+import { STAT_ICON_SPRITE_IDS } from "../content/statIcons";
 import { REFUND_SPRITE, TITLE_TAB_SPRITES } from "../content/titleIcons";
 import {
     EnemyDef,
@@ -160,6 +161,7 @@ export function getGameSpriteIds(): number[] {
         ...Object.values(TITLE_TAB_SPRITES),
         REFUND_SPRITE,
         FLAG_SPRITE,
+        ...STAT_ICON_SPRITE_IDS,
         ...PASSIVES.flatMap((passive) =>
             passive.iconSpriteId !== undefined ? [passive.iconSpriteId] : [],
         ),
@@ -264,8 +266,9 @@ function getSpotAnimIds(): number[] {
     return [...ids];
 }
 
-// Items drawn flying or circling: thrown knives, and orbiting runes
-function getThrownObjIds(): number[] {
+// Item models used by thrown knife weapons: every level of throwing knives,
+// toktz-xil-ul, and atlatl darts
+export function getThrownKnifeObjIds(): Set<number> {
     const ids = new Set<number>();
     for (const weapon of WEAPONS) {
         if (weapon.kind === "knives") {
@@ -276,6 +279,20 @@ function getThrownObjIds(): number[] {
                 }
             }
         }
+    }
+    return ids;
+}
+
+const THROWN_KNIFE_OBJ_IDS = getThrownKnifeObjIds();
+
+export function isThrownKnifeObj(objId: number): boolean {
+    return THROWN_KNIFE_OBJ_IDS.has(objId);
+}
+
+// Items drawn flying or circling: thrown knives, and orbiting runes
+function getThrownObjIds(): number[] {
+    const ids = new Set<number>(getThrownKnifeObjIds());
+    for (const weapon of WEAPONS) {
         for (const objId of weapon.orbitObjIds ?? []) {
             ids.add(objId);
         }

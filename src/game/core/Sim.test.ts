@@ -32,6 +32,7 @@ import { EnemyDef, emptyStats } from "../content/types";
 import { RUN_LENGTH } from "../content/waves";
 import { WEAPONS, getWeapon } from "../content/weapons";
 import { DPS_WINDOW_SECONDS, LEVEL_MIGHT_LEVELS, Sim, TICKS_PER_SECOND } from "./Sim";
+import { UpgradeChoice } from "./Upgrades";
 import { Enemy, SimEvent, Visitor } from "./entities";
 import { TestLoc, makeGrid } from "./world/testGrid";
 import { endlessXpForLevel, runXpForLevel } from "./xp";
@@ -1350,6 +1351,184 @@ describe("caskets and items", () => {
         expect(sim.banishesLeft).toBe(0);
         sim.choose(2);
         expect(sim.state).not.toBe("levelUp");
+    });
+
+    describe("locking a level up reward", () => {
+        // A level up with a new weapon, a new passive and the starting weapon's
+        // next level, and three of them pending
+        function lockSetup(locks = 2) {
+            const sim = createSim("warrior", 1, "lumbridge", { ...emptyStats(), lock: locks });
+            sim.stash("antique_lamp");
+            sim.useItem(0);
+            expect(sim.state).toBe("levelUp");
+            const starting = sim.weapons[0].def.id;
+            const axe = WEAPONS.find(
+                (w) =>
+                    w.id !== starting &&
+                    !w.style &&
+                    !w.family &&
+                    !w.evolved &&
+                    !w.pickOnly &&
+                    !w.unlock,
+            )!.id;
+            sim.pendingLevelUps = 3;
+            const offer = (): UpgradeChoice[] => [
+                { kind: "newWeapon", weaponId: axe, quality: "common" },
+                { kind: "newPassive", passiveId: "piety", quality: "rare" },
+                { kind: "weaponLevel", weaponId: starting, level: 2, quality: "common" },
+            ];
+            sim.choices = offer();
+            return { sim, starting, axe, offer };
+        }
+
+        test("a run's locks come from the stat", () => {
+            expect(createSim().locksLeft).toBe(0);
+            const sim = createSim("warrior", 1, "lumbridge", { ...emptyStats(), lock: 3 });
+            expect(sim.locksLeft).toBe(3);
+        });
+
+        test("a locked reward comes first at the next level up, as it was, and is used up", () => {
+            const { sim } = lockSetup();
+            const locked = sim.choices[1];
+            expect(sim.canLockChoice(1)).toBe(true);
+            expect(sim.lockChoice(1)).toBe(true);
+            expect(sim.locksLeft).toBe(1);
+            // It stays where it is, greyed out, and can't be picked
+            expect(sim.choices[1]).toBe(locked);
+            expect(sim.isLockedChoice(1)).toBe(true);
+            expect(sim.isLockedChoice(0)).toBe(false);
+            sim.choose(1);
+            expect(sim.choices[1]).toBe(locked);
+            expect(sim.passives.some((p) => p.id === "piety")).toBe(false);
+            sim.choose(0);
+            // Next level up: slot 0, unchanged
+            expect(sim.state).toBe("levelUp");
+            expect(sim.pendingLevelUps).toBe(2);
+            expect(sim.choices[0]).toBe(locked);
+            expect(sim.choices[0]).toEqual({
+                kind: "newPassive",
+                passiveId: "piety",
+                quality: "rare",
+            });
+            expect(sim.choices.length).toBeGreaterThanOrEqual(3);
+            // Never twice in one level up
+            expect(
+                sim.choices.filter((c) => c.kind === "newPassive" && c.passiveId === "piety"),
+            ).toHaveLength(1);
+            // On offer because it was locked, until it's picked or the level up ends
+            expect(sim.isCarriedChoice(0)).toBe(true);
+            expect(sim.isCarriedChoice(1)).toBe(false);
+            // Used up: it's an ordinary reward now
+            expect(sim.isLockedChoice(0)).toBe(false);
+            sim.choose(0);
+            expect(sim.isCarriedChoice(0)).toBe(false);
+            expect(sim.passives.some((p) => p.id === "piety")).toBe(true);
+            expect(sim.choices[0]).not.toBe(locked);
+        });
+
+        test("a locked reward carries over to the next of several level ups in a row, once", () => {
+            const { sim } = lockSetup();
+            const locked = sim.choices[2];
+            expect(sim.lockChoice(2)).toBe(true);
+            sim.choose(0);
+            expect(sim.pendingLevelUps).toBe(2);
+            expect(sim.choices[0]).toBe(locked);
+            sim.choose(1);
+            // The third level up has no lock left to bring back
+            expect(sim.pendingLevelUps).toBe(1);
+            expect(sim.choices[0]).not.toBe(locked);
+            sim.choose(0);
+            expect(sim.pendingLevelUps).toBe(0);
+            expect(sim.state).toBe("playing");
+        });
+
+        test("a locked reward waits for a level up that isn't pending yet", () => {
+            const { sim } = lockSetup();
+            sim.pendingLevelUps = 1;
+            const locked = sim.choices[1];
+            expect(sim.lockChoice(1)).toBe(true);
+            sim.choose(0);
+            expect(sim.state).toBe("playing");
+            sim.stash("antique_lamp");
+            sim.useItem(0);
+            expect(sim.state).toBe("levelUp");
+            expect(sim.choices[0]).toBe(locked);
+        });
+
+        test("a locked weapon level is dropped when the weapon's moved on", () => {
+            const { sim, starting } = lockSetup();
+            const locked = sim.choices[2];
+            expect(sim.lockChoice(2)).toBe(true);
+            // Levelled some other way in between
+            sim.apply({ kind: "weaponLevel", weaponId: starting, level: 2, quality: "common" });
+            sim.choose(0);
+            expect(sim.choices).not.toContain(locked);
+            expect(sim.locksLeft).toBe(1);
+        });
+
+        test("one reward is held at a time", () => {
+            const { sim } = lockSetup();
+            expect(sim.lockChoice(0)).toBe(true);
+            expect(sim.canLockChoice(1)).toBe(false);
+            expect(sim.lockChoice(1)).toBe(false);
+            expect(sim.locksLeft).toBe(1);
+        });
+
+        test("can't lock without a lock left, or the filler coins and food", () => {
+            const none = lockSetup(0).sim;
+            expect(none.locksLeft).toBe(0);
+            expect(none.canLockChoice(0)).toBe(false);
+            expect(none.lockChoice(0)).toBe(false);
+            const { sim } = lockSetup();
+            sim.choices = [
+                { kind: "coins", amount: 25 },
+                { kind: "food", amount: 10 },
+                { kind: "newPassive", passiveId: "piety", quality: "common" },
+            ];
+            expect(sim.canLockChoice(0)).toBe(false);
+            expect(sim.canLockChoice(1)).toBe(false);
+            expect(sim.canLockChoice(2)).toBe(true);
+            expect(sim.canLockChoice(3)).toBe(false);
+            expect(sim.lockChoice(0)).toBe(false);
+            expect(sim.locksLeft).toBe(2);
+        });
+
+        test("never the last reward left to pick", () => {
+            const { sim, offer } = lockSetup();
+            sim.choices = offer().slice(0, 1);
+            expect(sim.canLockChoice(0)).toBe(false);
+            // The other one's banished, so it can't be picked either
+            sim.choices = offer().slice(0, 2);
+            sim.heroes[0].banished.add("piety");
+            expect(sim.canLockChoice(0)).toBe(false);
+            expect(sim.lockChoice(0)).toBe(false);
+            sim.heroes[0].banished.delete("piety");
+            expect(sim.lockChoice(0)).toBe(true);
+        });
+
+        test("a reroll keeps the lock for the next level up and doesn't bring the card back", () => {
+            const { sim } = lockSetup();
+            const locked = sim.choices[1];
+            expect(sim.lockChoice(1)).toBe(true);
+            sim.rerollsLeft = 100;
+            for (let i = 0; i < 100; i++) {
+                expect(sim.reroll()).toBe(true);
+                const again = sim.choices.some(
+                    (c) => c.kind === "newPassive" && c.passiveId === "piety",
+                );
+                expect(again).toBe(false);
+            }
+            sim.choose(0);
+            expect(sim.choices[0]).toBe(locked);
+        });
+
+        test("a run with no lock rolls the same rewards", () => {
+            const a = lockSetup(0).sim;
+            const b = lockSetup(2).sim;
+            a.choose(0);
+            b.choose(0);
+            expect(b.choices).toEqual(a.choices);
+        });
     });
 
     test("a casket's item can be banished, a whole set for a set's piece, but not what's worn or carried", () => {

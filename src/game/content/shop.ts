@@ -151,6 +151,17 @@ export const SHOP_UPGRADES: ShopUpgradeDef[] = [
         baseCost: 600,
     },
     {
+        // Set sail: holds a level up reward over to the next level up, where it
+        // comes first as it was
+        id: "sailing",
+        name: "Sailing",
+        description: "Set sail: lock a level up reward for your next level up",
+        stat: "lock",
+        perRank: 1,
+        maxRank: 2,
+        baseCost: 800,
+    },
+    {
         id: "ring_of_life",
         name: "Ring of life",
         description: "Get back up once when you die",
@@ -223,4 +234,46 @@ export function getPageCost(upgrades: Record<string, number>): number {
 export function getUpgradeCost(upgradeId: string, upgrades: Record<string, number>): number {
     const more = { ...upgrades, [upgradeId]: (upgrades[upgradeId] ?? 0) + 1 };
     return getPageCost(more) - getPageCost(upgrades);
+}
+
+export type UpgradeRequirement = { upgradeId: string; name: string; rank: number };
+
+// What a locked upgrade still waits on: the upgrades not yet at their rank.
+// Empty when it's open to buy. Only the page's ranks decide it.
+export function getUpgradeRequirements(
+    upgradeId: string,
+    upgrades: Record<string, number>,
+): UpgradeRequirement[] {
+    const requires = SHOP_UPGRADE_BY_ID.get(upgradeId)?.requires ?? [];
+    return requires
+        .filter((need) => (upgrades[need.upgradeId] ?? 0) < need.rank)
+        .map((need) => ({
+            ...need,
+            name: SHOP_UPGRADE_BY_ID.get(need.upgradeId)?.name ?? need.upgradeId,
+        }));
+}
+
+export function isUpgradeLocked(upgradeId: string, upgrades: Record<string, number>): boolean {
+    return getUpgradeRequirements(upgradeId, upgrades).length > 0;
+}
+
+export type ShopListing = {
+    upgrade: ShopUpgradeDef;
+    rank: number;
+    // Waiting on other upgrades, which are requiredBy's
+    locked: boolean;
+    requiredBy: UpgradeRequirement[];
+};
+
+// Every upgrade for a page's ranks, in shop order, with which are still locked
+export function getShopUpgrades(upgrades: Record<string, number>): ShopListing[] {
+    return SHOP_UPGRADES.map((upgrade) => {
+        const requiredBy = getUpgradeRequirements(upgrade.id, upgrades);
+        return {
+            upgrade,
+            rank: upgrades[upgrade.id] ?? 0,
+            locked: requiredBy.length > 0,
+            requiredBy,
+        };
+    });
 }

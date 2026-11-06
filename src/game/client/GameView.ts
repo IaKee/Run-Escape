@@ -47,6 +47,7 @@ import {
     getPickupModelKey,
     getPileLook,
     getShieldedModelKey,
+    isThrownKnifeObj,
 } from "./GameAssets";
 import { Overlay, ScreenPoint } from "./Overlay";
 import { PetFollower, PetFollowers } from "./PetFollowers";
@@ -73,6 +74,9 @@ const BIG_ACTOR_LIFT = 0.6;
 // Yaws face the way NPC models do (south at 0); the cannon's barrel points
 // north in its model, so it's turned half a turn to aim where it shoots
 const CANNON_YAW_OFFSET = 1024;
+// Thrown knife models' tips point backwards on their ground items, so they're
+// turned half a turn so the blade points at their target
+const KNIFE_YAW_OFFSET = 1024;
 const PLAYER_HIT_TINT = 0xff9090;
 // Burning ground's flames are drawn this much bigger than a camp fire's, to
 // read as a patch of fire from the game's camera, and are this far out of step
@@ -510,7 +514,11 @@ export class GameView {
             }
             const anim = model.anims[0];
             const frame = anim.getFrame(tick - projectile.startTick);
-            actors.draw(model, anim, frame, x, height, y, projectile.yaw, {
+            const isKnife =
+                projectile.kind === "knife" ||
+                (projectile.objId !== -1 && isThrownKnifeObj(projectile.objId));
+            const yaw = isKnife ? (projectile.yaw + KNIFE_YAW_OFFSET) & 2047 : projectile.yaw;
+            actors.draw(model, anim, frame, x, height, y, yaw, {
                 scale: projectile.kind === "rune" ? RUNE_SCALE : 1,
             });
         }

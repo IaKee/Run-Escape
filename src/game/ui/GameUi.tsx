@@ -4,6 +4,8 @@ import {
     memo,
     useCallback,
     useEffect,
+    useId,
+    useLayoutEffect,
     useRef,
     useState,
     useSyncExternalStore,
@@ -44,12 +46,14 @@ import {
 } from "../content/maps";
 import { PET_BY_ID, getFoundPets, getPetTrophy } from "../content/pets";
 import { RARITIES } from "../content/rarity";
-import { SHOP_UPGRADES } from "../content/shop";
+import { SHOP_UPGRADES, getShopUpgrades } from "../content/shop";
+import { LOCK_SPRITE, statIconFor } from "../content/statIcons";
+import { formatStats } from "../content/stats";
 import { COLLECTION_LOG_OBJ, REFUND_SPRITE, TITLE_TAB_SPRITES } from "../content/titleIcons";
 import { TROPHY_BY_ID } from "../content/trophies";
 import { CharacterDef, CombatStyle, MapDef } from "../content/types";
 import { MapReward, describeUnlockTask, getMapRewards } from "../content/unlocks";
-import { WeaponStatLine } from "../content/weaponStats";
+import { WeaponStatLine, formatWeaponStat } from "../content/weaponStats";
 import { WEAPONS, getWeapon } from "../content/weapons";
 import type { RaidChest } from "../core/Sim";
 import {
@@ -76,12 +80,15 @@ import { EventModal } from "./EventModal";
 import "./GameUi.css";
 import { InventoryItem } from "./InventoryItem";
 import { ItemIcon } from "./ItemIcon";
+import { ItemTooltip } from "./ItemTooltip";
+import { LockButton } from "./LockButton";
 import { NoticePanel } from "./NoticePanel";
 import { KeyHint, PadControls, PadIcon, usePadKind } from "./PadHint";
 import { QuestScreen } from "./QuestScreen";
 import { RerollButton } from "./RerollButton";
 import { ExportReminder, SaveBlockPanel, UnreadableSavePanel } from "./SavePanels";
 import { SkipButton } from "./SkipButton";
+import { StatLine } from "./StatLine";
 import { RotateNotice, TouchControls, enterFullscreen } from "./TouchControls";
 import { GAME_VERSION } from "./changelog";
 import { formatCompact, formatShare } from "./formatCompact";
@@ -1269,6 +1276,14 @@ function AdventurerDetails({
                 )}
             </div>
             <div className="ui-card-text">{character.description}</div>
+            {/* What they bring, a stat to a line */}
+            {formatStats(character.bonus).length > 0 && (
+                <div className="ui-select-bonus">
+                    {formatStats(character.bonus).map((text) => (
+                        <StatLine key={text} text={text} />
+                    ))}
+                </div>
+            )}
             {!unlocked && character.unlock && (
                 <div className="ui-card-cost">{describeUnlockTask(character.unlock)} to unlock</div>
             )}
@@ -1609,69 +1624,98 @@ function ShopScreen({ ui, client }: ScreenProps): JSX.Element {
                     role="tabpanel"
                     aria-labelledby={`skills-tab-${style}`}
                 >
-                    {SHOP_UPGRADES.map((upgrade) => {
-                        const rank = page.upgrades[upgrade.id] ?? 0;
-                        const cost = getNextUpgradeCost(save, upgrade.id, style);
-                        const affordable = cost !== undefined && coins >= cost;
-                        return (
-                            <div key={upgrade.id} className="ui-shop-entry">
-                                <button
-                                    className={
-                                        "ui-card ui-shop-card" + (affordable ? "" : " ui-card-dim")
-                                    }
-                                    aria-disabled={!affordable}
-                                    title={
-                                        rank > 0 && !isCoarsePointer
-                                            ? "Right-click to refund one rank"
-                                            : undefined
-                                    }
-                                    onClick={() => {
-                                        if (affordable) {
-                                            client.buyUpgrade(upgrade.id, style);
-                                        }
-                                    }}
-                                    onContextMenu={(event) => {
-                                        if (rank > 0) {
-                                            event.preventDefault();
-                                            if (!isCoarsePointer) {
-                                                client.refundUpgrade(upgrade.id, style);
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <div className="ui-card-title">{upgrade.name}</div>
-                                    <div className="ui-card-text">{upgrade.description}</div>
-                                    <div className="ui-pips">
-                                        {Array.from({ length: upgrade.maxRank }, (_, i) => (
-                                            <span
-                                                key={i}
-                                                className={i < rank ? "ui-pip ui-pip-on" : "ui-pip"}
-                                            />
-                                        ))}
-                                    </div>
-                                    <div className="ui-card-cost">
-                                        {cost === undefined ? "Maxed" : <Coins amount={cost} />}
-                                    </div>
-                                </button>
-                                {rank > 0 && (
+                    {(() => {
+                        const listings = getShopUpgrades(page.upgrades);
+                        return listings.map(({ upgrade, rank, locked, requiredBy }) => {
+                            const cost = getNextUpgradeCost(save, upgrade.id, style);
+                            const affordable = !locked && cost !== undefined && coins >= cost;
+                            const lockText = locked
+                                ? `Max out ${requiredBy.map((need) => need.name).join(" and ")} to unlock`
+                                : undefined;
+                            return (
+                                <div key={upgrade.id} className="ui-shop-entry">
                                     <button
-                                        className="ui-shop-refund"
-                                        aria-label={`Refund one ${upgrade.name} rank`}
-                                        title={`Refund one ${upgrade.name} rank`}
-                                        onClick={() => client.refundUpgrade(upgrade.id, style)}
+                                        className={
+                                            "ui-card ui-shop-card" +
+                                            (locked
+                                                ? " ui-card-locked ui-card-dim"
+                                                : affordable
+                                                  ? ""
+                                                  : " ui-card-dim")
+                                        }
+                                        aria-disabled={locked || !affordable}
+                                        disabled={locked}
+                                        title={
+                                            locked
+                                                ? lockText
+                                                : rank > 0 && !isCoarsePointer
+                                                  ? "Right-click to refund one rank"
+                                                  : undefined
+                                        }
+                                        onClick={() => {
+                                            if (!locked && affordable) {
+                                                client.buyUpgrade(upgrade.id, style);
+                                            }
+                                        }}
+                                        onContextMenu={(event) => {
+                                            if (rank > 0) {
+                                                event.preventDefault();
+                                                if (!isCoarsePointer) {
+                                                    client.refundUpgrade(upgrade.id, style);
+                                                }
+                                            }
+                                        }}
                                     >
-                                        <span className="ui-shop-refund-icon" aria-hidden="true">
-                                            <ItemIcon
-                                                objId={-1}
-                                                spriteId={REFUND_SPRITE}
-                                                size={21}
+                                        <div className="ui-card-title">{upgrade.name}</div>
+                                        <div className="ui-card-text">
+                                            <StatLine
+                                                text={upgrade.description}
+                                                statKey={upgrade.stat}
                                             />
-                                        </span>
+                                        </div>
+                                        <div className="ui-pips">
+                                            {Array.from({ length: upgrade.maxRank }, (_, i) => (
+                                                <span
+                                                    key={i}
+                                                    className={
+                                                        i < rank ? "ui-pip ui-pip-on" : "ui-pip"
+                                                    }
+                                                />
+                                            ))}
+                                        </div>
+                                        <div className="ui-card-cost">
+                                            {locked ? (
+                                                <span className="ui-shop-locked">{lockText}</span>
+                                            ) : cost === undefined ? (
+                                                "Maxed"
+                                            ) : (
+                                                <Coins amount={cost} />
+                                            )}
+                                        </div>
                                     </button>
-                                )}
-                            </div>
-                        );
-                    })}
+                                    {rank > 0 && (
+                                        <button
+                                            className="ui-shop-refund"
+                                            aria-label={`Refund one ${upgrade.name} rank`}
+                                            title={`Refund one ${upgrade.name} rank`}
+                                            onClick={() => client.refundUpgrade(upgrade.id, style)}
+                                        >
+                                            <span
+                                                className="ui-shop-refund-icon"
+                                                aria-hidden="true"
+                                            >
+                                                <ItemIcon
+                                                    objId={-1}
+                                                    spriteId={REFUND_SPRITE}
+                                                    size={21}
+                                                />
+                                            </span>
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        });
+                    })()}
                 </div>
                 <div className="ui-row">
                     <button className="ui-button" onClick={() => client.showScreen("title")}>
@@ -1805,7 +1849,7 @@ const Slots = memo(function Slots({ slots, max }: { slots: SlotView[]; max: numb
                                             : `Level ${slot.level} of ${slot.maxLevel}`}
                                     </div>
                                     {slot.stats?.map((line) => (
-                                        <div key={line}>{line}</div>
+                                        <StatLine key={line} text={line} />
                                     ))}
                                     {slot.detail && <div>{slot.detail}</div>}
                                     {slot.evolution && <EvolutionLine {...slot.evolution} />}
@@ -1842,28 +1886,106 @@ function EvolutionLine({
     );
 }
 
+function GearSlot({ slot }: { slot: GearSlotView }): JSX.Element {
+    const tipId = useId();
+    const [hovered, setHovered] = useState(false);
+    const [focused, setFocused] = useState(false);
+    const showTip = hovered || focused;
+    const tipRef = useRef<HTMLDivElement>(null);
+    const [placement, setPlacement] = useState<"above" | "below">("above");
+    const [flipH, setFlipH] = useState(false);
+
+    useLayoutEffect(() => {
+        if (!showTip || !tipRef.current) return;
+        const rect = tipRef.current.getBoundingClientRect();
+        if (rect.top < 0) {
+            setPlacement("below");
+        }
+        if (typeof window !== "undefined" && rect.right > window.innerWidth) {
+            setFlipH(true);
+        }
+    }, [showTip]);
+
+    useEffect(() => {
+        if (!showTip) {
+            setPlacement("above");
+            setFlipH(false);
+        }
+    }, [showTip]);
+
+    return (
+        <div
+            tabIndex={0}
+            className="ui-slot ui-gear-slot"
+            style={slot.item ? { borderColor: slot.item.rarity.color } : undefined}
+            aria-describedby={showTip ? tipId : undefined}
+            aria-label={slot.item ? slot.item.name : `${slot.name} slot (empty)`}
+            onPointerEnter={(e) => {
+                if (!e.pointerType || e.pointerType === "mouse") {
+                    setHovered(true);
+                }
+            }}
+            onPointerLeave={(e) => {
+                if (!e.pointerType || e.pointerType === "mouse") {
+                    setHovered(false);
+                }
+            }}
+            onFocus={() => {
+                setFocused(true);
+            }}
+            onBlur={() => {
+                setFocused(false);
+            }}
+            onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                    setHovered(false);
+                    setFocused(false);
+                }
+            }}
+        >
+            {slot.item ? (
+                <ItemIcon objId={slot.item.objId} size={22} />
+            ) : (
+                <span className="ui-gear-empty">{slot.name[0]}</span>
+            )}
+            {showTip &&
+                (slot.item ? (
+                    <div
+                        ref={tipRef}
+                        id={tipId}
+                        role="tooltip"
+                        className={
+                            "ui-gear-tip" +
+                            (placement === "below" ? " ui-gear-tip-below" : "") +
+                            (flipH ? " ui-gear-tip-right" : "")
+                        }
+                    >
+                        <ItemTooltip item={slot.item} renderLine={(t) => <StatLine text={t} />} />
+                    </div>
+                ) : (
+                    <div
+                        ref={tipRef}
+                        id={tipId}
+                        role="tooltip"
+                        className={
+                            "ui-gear-tip item-tip rs-border rs-background" +
+                            (placement === "below" ? " ui-gear-tip-below" : "") +
+                            (flipH ? " ui-gear-tip-right" : "")
+                        }
+                    >
+                        {slot.name} slot (empty)
+                    </div>
+                ))}
+        </div>
+    );
+}
+
 // Worn gear, small, under the weapons and passives
 const GearSlots = memo(function GearSlots({ gear }: { gear: GearSlotView[] }): JSX.Element {
     return (
         <div className="ui-slots ui-gear-slots">
             {gear.map((slot) => (
-                <div
-                    key={slot.slot}
-                    className="ui-slot ui-gear-slot"
-                    style={slot.item ? { borderColor: slot.item.rarity.color } : undefined}
-                    title={
-                        slot.item
-                            ? `${slot.item.name}: ${slot.item.lines.join(", ")}` +
-                              (slot.item.set ? `\n${slot.item.set.text}` : "")
-                            : `${slot.name} (empty)`
-                    }
-                >
-                    {slot.item ? (
-                        <ItemIcon objId={slot.item.objId} size={22} />
-                    ) : (
-                        <span className="ui-gear-empty">{slot.name[0]}</span>
-                    )}
-                </div>
+                <GearSlot key={slot.slot} slot={slot} />
             ))}
         </div>
     );
@@ -2137,23 +2259,36 @@ const Minimap = memo(function Minimap({ client }: { client: GameClient }): JSX.E
 function ChoiceStats({ stats }: { stats: WeaponStatLine[] }): JSX.Element {
     return (
         <div className="ui-choice-stats">
-            {stats.map((line) => (
-                <span key={line.label} className="ui-choice-stat">
-                    <span className="ui-choice-stat-label">{line.label}</span>{" "}
-                    {line.from !== undefined && <>{line.from} → </>}
-                    <span
-                        className={
-                            line.from === undefined
-                                ? undefined
-                                : line.better
-                                  ? "ui-choice-stat-up"
-                                  : "ui-choice-stat-down"
-                        }
-                    >
-                        {line.value}
+            {stats.map((line) => {
+                const text = formatWeaponStat(line);
+                const icon = statIconFor(text) ?? statIconFor(line.label);
+                return (
+                    <span key={line.label} className="ui-choice-stat ui-stat-line">
+                        {icon ? (
+                            <ItemIcon objId={icon.objId ?? -1} spriteId={icon.spriteId} size={16} />
+                        ) : (
+                            <span
+                                className="ui-stat-spacer"
+                                style={{ width: 18, height: 16 }}
+                                aria-hidden="true"
+                            />
+                        )}
+                        <span className="ui-choice-stat-label">{line.label}</span>{" "}
+                        {line.from !== undefined && <>{line.from} → </>}
+                        <span
+                            className={
+                                line.from === undefined
+                                    ? undefined
+                                    : line.better
+                                      ? "ui-choice-stat-up"
+                                      : "ui-choice-stat-down"
+                            }
+                        >
+                            {line.value}
+                        </span>
                     </span>
-                </span>
-            ))}
+                );
+            })}
         </div>
     );
 }
@@ -2164,6 +2299,7 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
     const hilt = ui.choices.some((choice) => choice.isHilt);
     const spell = ui.choices.some((choice) => choice.isSpell);
     const banishes = ui.hud?.banishes ?? 0;
+    const locks = ui.hud?.locks ?? 0;
     return (
         <div className="ui-modal">
             <div className="ui-panel rs-border rs-background ui-levelup">
@@ -2185,15 +2321,20 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
                     {ui.choices.map((choice, i) => (
                         <div
                             key={i}
-                            className={"ui-choice-row" + (banishes > 0 ? " ui-has-banish" : "")}
+                            className={
+                                "ui-choice-row" +
+                                (banishes > 0 ? " ui-has-banish" : "") +
+                                (locks > 0 ? " ui-has-lock" : "")
+                            }
                         >
                             <button
                                 className={
                                     "ui-card ui-choice" +
                                     (choice.isEvolution ? " ui-choice-evolve" : "") +
-                                    (choice.banished ? " ui-choice-banished" : "")
+                                    (choice.banished ? " ui-choice-banished" : "") +
+                                    (choice.locked ? " ui-choice-locked" : "")
                                 }
-                                disabled={choice.banished}
+                                disabled={choice.banished || choice.locked}
                                 style={
                                     choice.rarity ? { borderColor: choice.rarity.color } : undefined
                                 }
@@ -2210,6 +2351,24 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
                                         {choice.title}
                                         {choice.banished ? (
                                             <span className="ui-tag ui-tag-banished">Banished</span>
+                                        ) : choice.locked ? (
+                                            <span className="ui-tag ui-tag-locked">
+                                                <ItemIcon
+                                                    objId={-1}
+                                                    spriteId={LOCK_SPRITE}
+                                                    size={14}
+                                                />{" "}
+                                                Locked
+                                            </span>
+                                        ) : choice.carried ? (
+                                            <span className="ui-tag ui-tag-locked">
+                                                <ItemIcon
+                                                    objId={-1}
+                                                    spriteId={LOCK_SPRITE}
+                                                    size={14}
+                                                />{" "}
+                                                Set sail
+                                            </span>
                                         ) : (
                                             choice.isNew && <span className="ui-tag">New!</span>
                                         )}
@@ -2223,6 +2382,20 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
                                         )}
                                     </div>
                                     <div className="ui-card-text">{choice.text}</div>
+                                    {choice.locked && (
+                                        <div className="ui-card-locked-note">
+                                            <ItemIcon objId={-1} spriteId={LOCK_SPRITE} size={16} />
+                                            <span>is locked and will show up next level up</span>
+                                        </div>
+                                    )}
+                                    {choice.carried && (
+                                        <div className="ui-card-locked-note">
+                                            <ItemIcon objId={-1} spriteId={LOCK_SPRITE} size={16} />
+                                            <span>
+                                                shows up first because you locked it last level up
+                                            </span>
+                                        </div>
+                                    )}
                                     {choice.evolves && (
                                         <div
                                             className={
@@ -2250,11 +2423,21 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
                                 )}
                             </button>
                             {/* Over the card's corner, under its rarity: a button can't go in a button */}
-                            {choice.banishable && (
-                                <BanishButton
-                                    title={`Never offered ${choice.title} again this run`}
-                                    onBanish={() => client.banish(i)}
-                                />
+                            {(choice.lockable || choice.banishable) && (
+                                <div className="ui-choice-actions">
+                                    {choice.lockable && (
+                                        <LockButton
+                                            title={`Lock ${choice.title}: it can't be picked now, and comes first at your next level up`}
+                                            onLock={() => client.lock(i)}
+                                        />
+                                    )}
+                                    {choice.banishable && (
+                                        <BanishButton
+                                            title={`Never offered ${choice.title} again this run`}
+                                            onBanish={() => client.banish(i)}
+                                        />
+                                    )}
+                                </div>
                             )}
                         </div>
                     ))}
@@ -2262,6 +2445,11 @@ function LevelUpModal({ ui, client }: ScreenProps): JSX.Element {
                 {banishes > 0 && (
                     <div className="ui-subtle ui-banishes">
                         {banishes} {banishes === 1 ? "banish" : "banishes"} left
+                    </div>
+                )}
+                {locks > 0 && (
+                    <div className="ui-subtle ui-locks">
+                        {locks} {locks === 1 ? "lock" : "locks"} left
                     </div>
                 )}
                 {!hilt && (
@@ -2477,8 +2665,10 @@ function PauseModal({
                                         <span style={{ color: slot.rarityColor }}>{slot.name}</span>
                                         <span className="ui-pause-detail">
                                             {[...(slot.stats ?? []), slot.detail]
-                                                .filter((text) => text)
-                                                .join(", ")}
+                                                .filter((text): text is string => Boolean(text))
+                                                .map((text, i) => (
+                                                    <StatLine key={i} text={text} />
+                                                ))}
                                         </span>
                                         {slot.evolution && <EvolutionLine {...slot.evolution} />}
                                     </span>
@@ -2495,7 +2685,7 @@ function PauseModal({
                                 <h3 className="ui-pause-heading">Your stats</h3>
                                 <div className="ui-pause-stats">
                                     {hud.stats.map((line) => (
-                                        <span key={line}>{line}</span>
+                                        <StatLine key={line} text={line} />
                                     ))}
                                 </div>
                             </>
@@ -2509,23 +2699,29 @@ function PauseModal({
                                             item && (
                                                 <div key={slot} className="ui-pause-item">
                                                     <ItemIcon objId={item.objId} size={28} />
-                                                    <span style={{ color: item.rarity.color }}>
-                                                        {item.name}
-                                                    </span>
-                                                    <span className="ui-pause-detail">
-                                                        {item.lines.join(", ")}
-                                                        {item.set && (
-                                                            <span
-                                                                className={
-                                                                    "ui-pause-set" +
-                                                                    (item.set.active
-                                                                        ? " ui-pause-set-on"
-                                                                        : "")
-                                                                }
-                                                            >
-                                                                {item.set.text}
-                                                            </span>
-                                                        )}
+                                                    <span className="ui-pause-name">
+                                                        <span style={{ color: item.rarity.color }}>
+                                                            {item.name}
+                                                        </span>
+                                                        <span className="ui-pause-detail">
+                                                            {item.lines.map((line, i) => (
+                                                                <StatLine key={i} text={line} />
+                                                            ))}
+                                                            {item.set && (
+                                                                <span
+                                                                    className={
+                                                                        "ui-pause-set" +
+                                                                        (item.set.active
+                                                                            ? " ui-pause-set-on"
+                                                                            : "")
+                                                                    }
+                                                                >
+                                                                    <StatLine
+                                                                        text={item.set.text}
+                                                                    />
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                     </span>
                                                 </div>
                                             ),

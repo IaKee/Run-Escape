@@ -25,6 +25,7 @@ export const STAT_INFO: Record<StatKey, { label: string; unit: "percent" | "flat
     revival: { label: "revivals", unit: "flat" },
     reroll: { label: "rerolls", unit: "flat" },
     banish: { label: "banishes", unit: "flat" },
+    lock: { label: "locks", unit: "flat" },
     thorns: { label: "recoil damage", unit: "flat" },
     healChance: { label: "chance to heal on hit", unit: "percent" },
     meleeKnockback: { label: "melee knockback", unit: "percent" },

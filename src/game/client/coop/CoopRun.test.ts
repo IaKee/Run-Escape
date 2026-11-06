@@ -353,6 +353,31 @@ describe("co-op lockstep", () => {
         expect(hero.pendingLevelUps).toBe(pending - 1);
     });
 
+    it("decides for them with a reward they haven't locked", () => {
+        const clock = { now: 0 };
+        const { run } = hostRun(clock);
+        const sim = run.sim;
+        sim.xp = 100;
+        run.stepFrame();
+        expect(sim.state).toBe("levelUp");
+        run.act({ kind: "choose", index: 0 });
+        run.receiveUp("guest1", { action: { kind: "choose", index: 0 } });
+        run.stepFrame();
+        // The slow one locked their first reward, then went quiet
+        const hero = sim.heroes[2];
+        hero.locksLeft = 1;
+        const k = hero.choices.findIndex((_, i) => sim.as(2, () => sim.canLockChoice(i)));
+        expect(k).toBeGreaterThanOrEqual(0);
+        [hero.choices[0], hero.choices[k]] = [hero.choices[k], hero.choices[0]];
+        expect(sim.as(2, () => sim.lockChoice(0))).toBe(true);
+        clock.now += DECIDE_AFTER_MS + 1;
+        const pending = hero.pendingLevelUps;
+        expect(run.stepFrame()).toEqual([
+            expect.objectContaining({ hero: 2, action: { kind: "choose", index: 1 }, auto: true }),
+        ]);
+        expect(hero.pendingLevelUps).toBe(pending - 1);
+    });
+
     it("answers each decision once, however often it's clicked before the frame comes", () => {
         const clock = { now: 0 };
         const { run } = hostRun(clock);
@@ -415,6 +440,29 @@ describe("co-op lockstep", () => {
         expect(run.act({ kind: "choose", index: pick })).toBe(true);
         run.stepFrame();
         expect(sim.heroes[0].pendingLevelUps).toBe(pending - 1);
+    });
+
+    it("locks a reward through the host's frames, and won't pick it", () => {
+        const { run } = hostRun({ now: 0 });
+        const sim = run.sim;
+        sim.xp = 100;
+        run.stepFrame();
+        expect(sim.state).toBe("levelUp");
+        sim.heroes[0].locksLeft = 1;
+        sim.heroes[0].pendingLevelUps = 2;
+        const index = sim.choices.findIndex((_, i) => sim.canLockChoice(i));
+        expect(index).toBeGreaterThanOrEqual(0);
+        const locked = sim.choices[index];
+        expect(run.act({ kind: "lock", index })).toBe(true);
+        run.stepFrame();
+        expect(sim.isLockedChoice(index)).toBe(true);
+        expect(sim.heroes[0].locksLeft).toBe(0);
+        // Another is picked, and the locked one comes back first
+        const pick = sim.choices.findIndex((_, i) => !sim.isLockedChoice(i));
+        expect(run.act({ kind: "choose", index: pick })).toBe(true);
+        run.stepFrame();
+        expect(sim.heroes[0].pendingLevelUps).toBe(1);
+        expect(sim.choices[0]).toEqual(locked);
     });
 
     it("lets a guest answer again if the host never applied it", () => {

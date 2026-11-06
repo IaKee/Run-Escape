@@ -317,6 +317,9 @@ function getChoiceViews(sim: Sim): ChoiceView[] {
             evolves: getEvolutionHint(choice, sim.weapons, sim.passives, style, sim.unlockedItems),
             banishable: sim.canBanishChoice(index),
             banished: sim.isBanishedChoice(index),
+            lockable: sim.canLockChoice(index),
+            locked: sim.isLockedChoice(index),
+            carried: sim.isCarriedChoice(index),
             bossPenalty: getBossPenalty(sim, choice),
         };
     });
@@ -1538,6 +1541,15 @@ export class GameClient implements GameFrameHandler {
                     this.sounds.denied();
                 }
                 break;
+            // A locked reward greys out where it is
+            case "lock":
+                if (done) {
+                    this.sounds.reroll();
+                    this.store.set({ choices: getChoiceViews(sim) });
+                } else {
+                    this.sounds.denied();
+                }
+                break;
             // A banished item is alched, which is the casket done
             case "banishChest":
                 if (done) {
@@ -1595,7 +1607,7 @@ export class GameClient implements GameFrameHandler {
         if (!sim || !sim.isChoosing()) {
             return;
         }
-        if (sim.isBanishedChoice(index)) {
+        if (sim.isBanishedChoice(index) || sim.isLockedChoice(index)) {
             this.sounds.denied();
             return;
         }
@@ -1683,6 +1695,21 @@ export class GameClient implements GameFrameHandler {
             return false;
         }
         return this.act(index === undefined ? { kind: "banishChest" } : { kind: "banish", index });
+    }
+
+    // Locks a level up's reward (by its place) to come first at the next level
+    // up, for one of the run's locks. False when it can't be.
+    lock(index: number): boolean {
+        const sim = this.sim;
+        if (!sim) {
+            return false;
+        }
+        // Checked here in co-op too, as with a banish
+        if (this.coopRun && !sim.canLockChoice(index)) {
+            this.sounds.denied();
+            return false;
+        }
+        return this.act({ kind: "lock", index });
     }
 
     // Takes none of the level up's rewards, for coins from the run. False when
@@ -2880,6 +2907,7 @@ export class GameClient implements GameFrameHandler {
             inventory: getInventoryViews(sim),
             rerolls: sim.rerollsLeft,
             banishes: sim.banishesLeft,
+            locks: sim.locksLeft,
             skip: sim.canSkip
                 ? { cost: sim.skipCost, affordable: sim.coins >= sim.skipCost }
                 : undefined,

@@ -22,6 +22,7 @@ export type StatKey =
     | "revival" // extra lives
     | "reroll" // extra rerolls of a level up's rewards or a casket's item
     | "banish" // weapons, passives or items that can be kept out of the run
+    | "lock" // level up rewards that can be held over to the next level up
     | "thorns" // damage dealt back to whatever hits you
     | "healChance" // chance a hit heals the player (blood fury)
     // Damage multiplier bonuses for one combat style's weapons only (see
@@ -64,6 +65,7 @@ export function emptyStats(): Stats {
         revival: 0,
         reroll: 0,
         banish: 0,
+        lock: 0,
         thorns: 0,
         healChance: 0,
         meleeMight: 0,
@@ -1416,6 +1418,9 @@ export type ShopUpgradeDef = {
     perRank: number;
     maxRank: number;
     baseCost: number;
+    // Other upgrades on the page that all have to be at these ranks first:
+    // until then this one can't be bought and does nothing
+    requires?: { upgradeId: string; rank: number }[];
 };
 
 export type WaveDef = {

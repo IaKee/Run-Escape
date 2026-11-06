@@ -598,6 +598,10 @@ version and how to run it.
   again that run. Banish a casket's item and it's alched, and never comes again (a set's piece
   banishes the whole set). Nothing you have can be banished: not what you're levelling, carrying
   or wearing, nor a piece of a set you're wearing.
+  **Sailing** (Set sail) gives up to 2 locks a run. A lock holds one level up reward over: its
+  card greys out and can't be picked, and at the next level up it comes first, exactly as it was,
+  marked with a padlock and "Set sail" so you can tell why it's there. It works on weapons and
+  passives, never on the last reward left to pick.
   **Smithing** and **Crafting** are the dear ones: up to 2 more weapon slots and 2 more passive
   slots.
   (The Dwarf engineer is out of the game for now; its cannon is a power-up. Saves keep it

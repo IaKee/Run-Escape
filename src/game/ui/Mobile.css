@@ -775,7 +775,7 @@
         gap: 6px;
     }
 
-    /* Banish goes under its card */
+    /* Banish & Lock go under their card */
     .ui-choice-row {
         flex: 1 1 0;
         flex-direction: column;
@@ -785,8 +785,23 @@
         gap: 4px;
     }
 
-    .ui-choice-row .ui-banish {
+    .ui-choice-row .ui-banish,
+    .ui-choice-row .ui-lock {
         position: static;
+        min-height: 24px;
+    }
+
+    .ui-choice-actions {
+        position: static;
+        display: flex;
+        gap: 4px;
+        align-items: stretch;
+    }
+
+    .ui-choice-actions .ui-banish,
+    .ui-choice-actions .ui-lock {
+        position: static;
+        flex: 1;
         min-height: 24px;
     }
 

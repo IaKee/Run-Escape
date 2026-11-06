@@ -173,3 +173,7 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+.ui-armoury-stats li {
+    padding: 1px 0;
+}

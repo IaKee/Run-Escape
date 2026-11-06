@@ -12,6 +12,7 @@ import { SaveData, getArmouryStep } from "../core/save";
 import "./ArmouryScreen.css";
 import { Coins } from "./Coins";
 import { ItemIcon } from "./ItemIcon";
+import { StatLine } from "./StatLine";
 
 // The Armoury: every piece of gear caskets give, slot by slot, as the
 // upgrades have made it (faded until it's been found). Beside them, the piece
@@ -156,7 +157,9 @@ function ArmouryDetails({
                 <ul className="ui-armoury-changes">
                     {compareStats(piece.stats, next.stats).map((line) => (
                         <li key={line.key}>
-                            <span className="ui-armoury-stat-label">{line.label}</span>
+                            <span className="ui-armoury-stat-label">
+                                <StatLine text={line.label} statKey={line.key} />
+                            </span>
                             <span>
                                 {line.from !== undefined && <>{line.from} → </>}
                                 <span
@@ -204,7 +207,9 @@ function ArmouryDetails({
             </div>
             <ul className="ui-armoury-stats">
                 {formatStats(piece.stats).map((text) => (
-                    <li key={text}>{text}</li>
+                    <li key={text}>
+                        <StatLine text={text} />
+                    </li>
                 ))}
                 {set && <li className="ui-armoury-set">{describeSetProgress(set)}</li>}
             </ul>

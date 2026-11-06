@@ -302,6 +302,22 @@ export function hiltChoices(weapon: WeaponState, unlocked?: ReadonlySet<string>)
     }));
 }
 
+// What a reward is about, which a lock keeps from coming round twice: the
+// weapon or passive it's for. Coins and food are never locked.
+export function lockKey(choice: UpgradeChoice): string | undefined {
+    switch (choice.kind) {
+        case "newWeapon":
+        case "weaponLevel":
+        case "evolve":
+            return `weapon:${choice.weaponId}`;
+        case "newPassive":
+        case "passiveLevel":
+            return `passive:${choice.passiveId}`;
+        default:
+            return undefined;
+    }
+}
+
 export function rollChoices(
     rng: Rng,
     weapons: readonly WeaponState[],
@@ -314,10 +330,17 @@ export function rollChoices(
     maxPassives = MAX_PASSIVES,
     // Weapons and passives banished this run: never offered new
     banished?: ReadonlySet<string>,
+    // A reward locked at an earlier level up (Sailing's Set sail):
+    // never rolled again. With place set it comes first, just as it was, if
+    // it's still on offer; otherwise it's dropped.
+    lock?: { choice: UpgradeChoice; place: boolean },
 ): UpgradeChoice[] {
     const random = () => rng.next();
-    const pool: { choice: () => UpgradeChoice; weight: number }[] = [];
+    const locked = lock && lockKey(lock.choice);
+    const pool: { choice: () => UpgradeChoice; weight: number; key: string }[] = [];
     const evolutions: UpgradeChoice[] = [];
+    // The locked reward, if it can still be offered
+    let kept: UpgradeChoice | undefined;
 
     // A family shares one weapon's offer chance among the members that are in
     // (evolutions are never offered, so they don't count)
@@ -343,14 +366,22 @@ export function rollChoices(
                     ...(weapon.level >= weapon.def.levels.length && { bonus: weapon.bonus }),
                 }),
                 weight: WEAPON_LEVEL_WEIGHT,
+                key: `weapon:${weapon.def.id}`,
             });
+            if (lock?.choice.kind === "weaponLevel" && locked === `weapon:${weapon.def.id}`) {
+                kept = weapon.level + 1 === lock.choice.level ? lock.choice : undefined;
+            }
         }
         if (canEvolve(weapon, ownedPassives, unlocked)) {
-            evolutions.push({
+            const evolve: UpgradeChoice = {
                 kind: "evolve",
                 weaponId: weapon.def.id,
                 into: weapon.def.evolution!.into,
-            });
+            };
+            if (lock?.choice.kind === "evolve" && locked === `weapon:${weapon.def.id}`) {
+                kept = lock.choice.into === evolve.into ? lock.choice : undefined;
+            }
+            evolutions.push(evolve);
         }
     }
     if (weapons.length < maxWeapons) {
@@ -384,7 +415,11 @@ export function rollChoices(
                         quality: atLeast(rollRarity(random, luck), weapon.rarity),
                     }),
                     weight: (RARITIES[weapon.rarity].weight * NEW_WEAPON_WEIGHT) / familySize,
+                    key: `weapon:${weapon.id}`,
                 });
+                if (lock?.choice.kind === "newWeapon" && locked === `weapon:${weapon.id}`) {
+                    kept = lock.choice;
+                }
             }
         }
     }
@@ -400,7 +435,11 @@ export function rollChoices(
                     currentValue: passive.value,
                 }),
                 weight: PASSIVE_LEVEL_WEIGHT,
+                key: `passive:${passive.id}`,
             });
+            if (lock?.choice.kind === "passiveLevel" && locked === `passive:${passive.id}`) {
+                kept = passive.level + 1 === lock.choice.level ? lock.choice : undefined;
+            }
         }
     }
     if (passives.length < maxPassives) {
@@ -417,17 +456,30 @@ export function rollChoices(
                         quality: rollRarity(random, luck),
                     }),
                     weight: RARITIES[passive.rarity].weight * NEW_PASSIVE_WEIGHT,
+                    key: `passive:${passive.id}`,
                 });
+                if (lock?.choice.kind === "newPassive" && locked === `passive:${passive.id}`) {
+                    kept = lock.choice;
+                }
             }
         }
     }
 
     const count = rng.chance(Math.min(luck * 0.3, 0.6)) ? 4 : 3;
-    const choices: UpgradeChoice[] = evolutions.slice(0, count);
-    while (choices.length < count && pool.length > 0) {
-        const index = rng.weightedIndex(pool.map((p) => p.weight));
-        choices.push(pool[index].choice());
-        pool.splice(index, 1);
+    // The locked reward goes first when it's placed, and isn't rolled again
+    // while it's held (nor when it's dropped for being out of date)
+    const choices: UpgradeChoice[] = lock?.place && kept ? [kept] : [];
+    const held = lock && (kept || !lock.place) ? locked : undefined;
+    for (const evolution of evolutions) {
+        if (choices.length < count && (!held || lockKey(evolution) !== held)) {
+            choices.push(evolution);
+        }
+    }
+    const open = held ? pool.filter((p) => p.key !== held) : pool;
+    while (choices.length < count && open.length > 0) {
+        const index = rng.weightedIndex(open.map((p) => p.weight));
+        choices.push(open[index].choice());
+        open.splice(index, 1);
     }
     if (choices.length === 0) {
         choices.push({ kind: "coins", amount: 25 }, { kind: "food", amount: 10 });

@@ -20,7 +20,13 @@ import {
 } from "../content/maps";
 import { isPetFound } from "../content/pets";
 import { QUESTS, QUEST_BY_ID } from "../content/quests";
-import { SHOP_UPGRADES, SHOP_UPGRADE_BY_ID, getPageCost, getUpgradeCost } from "../content/shop";
+import {
+    SHOP_UPGRADES,
+    SHOP_UPGRADE_BY_ID,
+    getPageCost,
+    getUpgradeCost,
+    isUpgradeLocked,
+} from "../content/shop";
 import { TROPHY_BY_ID } from "../content/trophies";
 import {
     CharacterDef,
@@ -342,9 +348,13 @@ function migrateSkillPage(raw: unknown): SkillPage {
 
 export function getMetaStats(save: SaveData, style: CombatStyle = "melee"): Stats {
     const stats = emptyStats();
+    const bought = save.skillPages[style].upgrades;
     for (const upgrade of SHOP_UPGRADES) {
-        const rank = save.skillPages[style].upgrades[upgrade.id] ?? 0;
-        stats[upgrade.stat] += upgrade.perRank * rank;
+        // One still waiting on another (refunded since) does nothing
+        if (isUpgradeLocked(upgrade.id, bought)) {
+            continue;
+        }
+        stats[upgrade.stat] += upgrade.perRank * (bought[upgrade.id] ?? 0);
     }
     return stats;
 }
@@ -367,13 +377,13 @@ export function getNextUpgradeCost(
         return undefined;
     }
     const rank = save.skillPages[style].upgrades[upgradeId] ?? 0;
-    if (rank >= upgrade.maxRank) {
+    if (rank >= upgrade.maxRank || isUpgradeLocked(upgradeId, save.skillPages[style].upgrades)) {
         return undefined;
     }
     return getUpgradeCost(upgradeId, save.skillPages[style].upgrades);
 }
 
-// Returns false when it can't be bought (maxed or too expensive)
+// Returns false when it can't be bought (maxed, locked or too expensive)
 export function buyUpgrade(
     save: SaveData,
     upgradeId: string,

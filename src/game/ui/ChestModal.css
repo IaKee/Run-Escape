@@ -612,6 +612,14 @@
     margin: 8px 0 0;
     padding: 0;
     color: var(--ui-white);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ui-chest-lines .ui-stat-line,
+.ui-chest-set .ui-stat-line {
+    white-space: normal;
 }
 
 .ui-chest-compare {
@@ -633,6 +641,10 @@
     flex-wrap: wrap;
     gap: 4px 12px;
     margin-top: 4px;
+}
+
+.ui-chest-changes .ui-stat-line {
+    display: inline-flex;
 }
 
 .ui-good {

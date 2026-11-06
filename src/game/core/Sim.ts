@@ -150,6 +150,7 @@ import {
     MAX_WEAPONS,
     UpgradeChoice,
     hiltChoices,
+    lockKey,
     overlevelBonus,
     rollChoices,
 } from "./Upgrades";
@@ -702,6 +703,12 @@ export type Hero = {
     banished: Set<string>;
     banishedItems: Set<string>;
     banishedSets: Set<string>;
+    // Locks left (Sailing's Set sail), and the reward being held over to the
+    // next level up, which comes first there. carriedChoice is that reward once
+    // it's on offer, so the screen can say why it's there.
+    locksLeft: number;
+    lockedChoice?: UpgradeChoice;
+    carriedChoice?: UpgradeChoice;
     // Level ups skipped this run, which make the next skip dearer
     skips: number;
     // For the run's stats: damage dealt and kills by what did it (a
@@ -1085,6 +1092,9 @@ export class Sim {
     get banishesLeft(): number {
         return this.hero.banishesLeft;
     }
+    get locksLeft(): number {
+        return this.hero.locksLeft;
+    }
     get banishedItems(): ReadonlySet<string> {
         return this.hero.banishedItems;
     }
@@ -1267,6 +1277,7 @@ export class Sim {
             hero.rerollsLeft = BASE_REROLLS + hero.stats.reroll;
             hero.rerollsAtStart = hero.rerollsLeft;
             hero.banishesLeft = hero.stats.banish;
+            hero.locksLeft = hero.stats.lock;
             // Testing: the starting weapon at its max too
             if (this.testing?.maxLevelUps) {
                 this.maxEverything();
@@ -1343,6 +1354,7 @@ export class Sim {
             banished: new Set(),
             banishedItems: new Set(),
             banishedSets: new Set(),
+            locksLeft: 0,
             skips: 0,
             damageBySource: {},
             recentDamage: new Float64Array(DPS_WINDOW_TICKS),
@@ -1748,8 +1760,13 @@ export class Sim {
     }
 
     choose(index: number): void {
-        // A banished reward stays on the card, greyed out, and can't be taken
-        if (!this.isChoosing(this.hero) || this.isBanishedChoice(index)) {
+        // A banished or locked reward stays on the card, greyed out, and can't
+        // be taken
+        if (
+            !this.isChoosing(this.hero) ||
+            this.isBanishedChoice(index) ||
+            this.isLockedChoice(index)
+        ) {
             return;
         }
         const choice = this.choices[index];
@@ -1777,6 +1794,7 @@ export class Sim {
     private nextLevelUp(): void {
         this.pendingLevelUps--;
         this.choices = [];
+        this.hero.carriedChoice = undefined;
         if (this.pendingLevelUps > 0) {
             this.choices = this.roll();
         } else {
@@ -1854,8 +1872,11 @@ export class Sim {
         return true;
     }
 
-    private roll(): UpgradeChoice[] {
-        return rollChoices(
+    // A level up's rewards. The one locked before comes first as it was, once:
+    // place is off for a reroll, which only keeps it from coming round again.
+    private roll(place = true): UpgradeChoice[] {
+        const held = this.hero.lockedChoice;
+        const choices = rollChoices(
             this.rng,
             this.weapons,
             this.passives,
@@ -1866,7 +1887,14 @@ export class Sim {
             this.maxWeapons,
             this.maxPassives,
             this.hero.banished,
+            held && { choice: held, place },
         );
+        if (held && place) {
+            this.hero.lockedChoice = undefined;
+            // Only if it made it onto the cards
+            this.hero.carriedChoice = choices.includes(held) ? held : undefined;
+        }
+        return choices;
     }
 
     // Picking a godsword's hilt, which can't be rerolled
@@ -1884,7 +1912,7 @@ export class Sim {
             return false;
         }
         if (this.isChoosing()) {
-            this.choices = this.roll();
+            this.choices = this.roll(false);
         } else if (this.state === "chest" && chest) {
             this.declineSetPiece(chest.itemId);
             const { itemId, upgradedFrom } = this.rollChestItem(chest.tier, chest.itemId);
@@ -1938,6 +1966,46 @@ export class Sim {
             this.hero.banished.add(choice.passiveId);
         }
         this.hero.banishesLeft--;
+        return true;
+    }
+
+    // Locking (Sailing's Set sail): a level up's weapon, passive or level
+    // for one of the run's locks. It can't be picked now, and comes first at
+    // the next level up, just as it is. One reward is held at a time, never
+    // the filler coins and food, and never the last one left to pick.
+    canLockChoice(index: number): boolean {
+        const choice = this.isChoosing() ? this.choices[index] : undefined;
+        return (
+            this.locksLeft > 0 &&
+            !this.hero.lockedChoice &&
+            !!choice &&
+            lockKey(choice) !== undefined &&
+            !this.isBanishedChoice(index) &&
+            this.choices.some((_, i) => i !== index && !this.isBanishedChoice(i))
+        );
+    }
+
+    // Whether a level up's reward is the one locked, so can't be picked now
+    isLockedChoice(index: number): boolean {
+        const choice = this.choices[index];
+        return !!choice && choice === this.hero.lockedChoice;
+    }
+
+    // Whether a level up's reward is on offer because it was locked at the
+    // last level up
+    isCarriedChoice(index: number): boolean {
+        const choice = this.choices[index];
+        return !!choice && choice === this.hero.carriedChoice;
+    }
+
+    // Locks a level up's reward: it stays where it is, greyed out, and shows
+    // up again at the next level up. False when it can't be locked.
+    lockChoice(index: number): boolean {
+        if (!this.canLockChoice(index)) {
+            return false;
+        }
+        this.hero.lockedChoice = this.choices[index];
+        this.hero.locksLeft--;
         return true;
     }
 

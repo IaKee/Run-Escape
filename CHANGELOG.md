@@ -5,6 +5,22 @@ the version in the corner).
 
 ## Unreleased
 
+### Added
+
+- Sailing, a new skill in the shop with the Set sail perk (2 ranks, one use each a run): lock a
+  level up reward and it can't be picked now. At your next level up it comes first, just as it
+  was, marked as set sail so you know why it's there.
+- Worn gear has a hover tooltip like the weapons': its name, slot, stats and set progress.
+
+### Changed
+
+- Stats show the same icon from the game's cache wherever they appear: the weapon and gear
+  tooltips, the pause menu, level ups, caskets and random events.
+
+### Fixed
+
+- Thrown knives point at their target, not back at you.
+
 ## 0.27.0 - 2026-11-05
 
 ### Added

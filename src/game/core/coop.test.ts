@@ -601,6 +601,55 @@ describe("co-op", () => {
         expect(a.banishesLeft).toBe(1);
     });
 
+    it("locks a reward for the player who locked it only, the same on every copy", () => {
+        const copies = [0, 1].map(() => {
+            const sim = createParty(["warrior", "wizard"]);
+            sim.heroes[1].locksLeft = 1;
+            sim.xp = 1e4;
+            sim.step();
+            expect(sim.state).toBe("levelUp");
+            // A second level up for them to come
+            sim.heroes[1].pendingLevelUps++;
+            return sim;
+        });
+        expect(cleanAction({ kind: "lock", index: 0 })).toEqual({ kind: "lock", index: 0 });
+        expect(cleanAction({ kind: "lock", index: -1 })).toBeUndefined();
+        expect(cleanAction({ kind: "lock" })).toBeUndefined();
+        const locked = copies.map((sim) => sim.heroes[1].choices[0]);
+        for (const sim of copies) {
+            // The one who's got no lock can't
+            applyFrameEvent(sim, { frame: sim.tick, hero: 0, action: { kind: "lock", index: 0 } });
+            expect(sim.heroes[0].lockedChoice).toBeUndefined();
+            applyFrameEvent(sim, { frame: sim.tick, hero: 1, action: { kind: "lock", index: 0 } });
+            const hero = sim.heroes[1];
+            expect(hero.locksLeft).toBe(0);
+            expect(hero.lockedChoice).toBeDefined();
+            expect(sim.heroes[0].locksLeft).toBe(0);
+            // A locked reward can't be picked, over the network either
+            applyFrameEvent(sim, {
+                frame: sim.tick,
+                hero: 1,
+                action: { kind: "choose", index: 0 },
+            });
+            const pending = hero.pendingLevelUps;
+            expect(hero.choices[0]).toBe(hero.lockedChoice);
+            applyFrameEvent(sim, {
+                frame: sim.tick,
+                hero: 1,
+                action: { kind: "choose", index: 1 },
+            });
+            expect(hero.pendingLevelUps).toBe(pending - 1);
+        }
+        // Their next level up brings it back first, the same on both
+        copies.forEach((sim, i) => {
+            const hero = sim.heroes[1];
+            expect(hero.choices[0]).toEqual(locked[i]);
+            expect(hero.lockedChoice).toBeUndefined();
+        });
+        expect(copies[1].heroes[1].choices).toEqual(copies[0].heroes[1].choices);
+        expect(syncHash(copies[1])).toBe(syncHash(copies[0]));
+    });
+
     it("doesn't wait on a player who left", () => {
         const sim = createParty(["warrior", "wizard"]);
         sim.xp = 1e4;

@@ -56,6 +56,7 @@ const DECISIONS: ReadonlySet<CoopAction["kind"]> = new Set([
     "skip",
     "banish",
     "banishChest",
+    "lock",
     "chest",
     "event",
     "leaveEvent",
@@ -230,13 +231,13 @@ export class CoopRun {
     // What the local player is deciding on now: their level up's choices, the
     // casket in front of them, or a random event's offer. Each is a new object
     // once it's been answered. The step is what changes while it stays open:
-    // a banished reward, a rerolled item, or something bought with the rest
-    // still for sale.
+    // a banished or locked reward, a rerolled item, or something bought with
+    // the rest still for sale.
     private decision(): { on: object; step: string | number } | undefined {
         const sim = this.sim;
         switch (sim.state) {
             case "levelUp":
-                return { on: sim.choices, step: sim.banishesLeft };
+                return { on: sim.choices, step: `${sim.banishesLeft}/${sim.locksLeft}` };
             case "chest":
                 return sim.chest && { on: sim.chest, step: sim.chest.itemId };
             case "event":
@@ -319,7 +320,8 @@ export class CoopRun {
             const action: CoopAction =
                 sim.state === "levelUp"
                     ? // The first reward they can take: not one they've banished
-                      { kind: "choose", index: firstUnbanished(sim, index) }
+                      // or locked
+                      { kind: "choose", index: firstPickable(sim, index) }
                     : sim.state === "chest"
                       ? { kind: "chest", action: "take" }
                       : { kind: "leaveEvent" };
@@ -516,11 +518,13 @@ export class CoopRun {
     }
 }
 
-// A hero's first level up reward that hasn't been banished (Firemaking). One
-// always is: the last pickable reward can't be banished.
-function firstUnbanished(sim: Sim, hero: number): number {
+// A hero's first level up reward that hasn't been banished (Firemaking) or
+// locked. One always is: the last pickable reward can't be banished or locked.
+function firstPickable(sim: Sim, hero: number): number {
     return sim.as(hero, () => {
-        const index = sim.choices.findIndex((_, i) => !sim.isBanishedChoice(i));
+        const index = sim.choices.findIndex(
+            (_, i) => !sim.isBanishedChoice(i) && !sim.isLockedChoice(i),
+        );
         return Math.max(0, index);
     });
 }

@@ -89,4 +89,33 @@ describe("the run's HUD", () => {
         act(() => store.setNumbers(numbers({ bossIn: 42 })));
         expect(view.container.querySelector(".ui-boss-warning")!.textContent).toMatch(/42s$/);
     });
+
+    test("shows locks left during level up when locks are available", () => {
+        const { store, view } = renderHud();
+        act(() =>
+            store.set({
+                overlay: "levelUp",
+                hud: { ...hud([slot("bow", 1)]), locks: 2 },
+                choices: [
+                    {
+                        title: "Fire rune",
+                        text: "Ignites enemies",
+                        iconObjId: 554,
+                        isNew: false,
+                        isEvolution: false,
+                        isHilt: false,
+                        isSpell: false,
+                        banishable: false,
+                        banished: false,
+                        lockable: true,
+                        locked: false,
+                        carried: false,
+                    },
+                ],
+            }),
+        );
+        expect(view.container.querySelector(".ui-locks")?.textContent).toBe("2 locks left");
+        act(() => store.set({ hud: { ...hud([slot("bow", 1)]), locks: 1 } }));
+        expect(view.container.querySelector(".ui-locks")?.textContent).toBe("1 lock left");
+    });
 });

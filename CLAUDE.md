@@ -58,6 +58,9 @@ go stale. Add anything that cost you time to work out.
 | The game on a phone's home screen (PWA)                | `docs/DEVELOPMENT.md`, Touch screens                                   |
 | React screens and the HUD                              | `src/game/ui/GameUi.tsx`                                               |
 | Weapon stat lines on cards, pause and tooltips         | `src/game/content/weaponStats.ts`                                      |
+| The icon beside each stat line, on every screen        | `content/statIcons.ts`, `ui/StatLine.tsx`                              |
+| The hover tooltip for worn gear                        | `ui/ItemTooltip.tsx`, `GearSlots` in `ui/GameUi.tsx`                   |
+| Locking a level up reward (Sailing's Set sail)         | `Sim.ts` (`lockChoice`), `ui/LockButton.tsx`, `content/shop.ts`        |
 | How the player stands and runs with each weapon        | `src/game/content/stances.ts`                                          |
 | Stat names and types                                   | `src/game/content/stats.ts`, `types.ts`                                |
 | Balance bot                                            | `scripts/game/simulate-run.ts`                                         |

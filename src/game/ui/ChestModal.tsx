@@ -9,6 +9,7 @@ import { Coins } from "./Coins";
 import { ItemIcon } from "./ItemIcon";
 import { KeyHint } from "./PadHint";
 import { RerollButton } from "./RerollButton";
+import { StatLine } from "./StatLine";
 
 // Opening a reward casket: it drops in, rattles harder and harder while it
 // glows its tier's colour, then bursts open in the item's rarity colour (rays,
@@ -358,12 +359,14 @@ function ChestCard({
             </div>
             <ul className="ui-chest-lines">
                 {item.lines.map((line) => (
-                    <li key={line}>{line}</li>
+                    <li key={line}>
+                        <StatLine text={line} />
+                    </li>
                 ))}
             </ul>
             {item.set && (
                 <div className={"ui-chest-set" + (item.set.active ? " ui-chest-set-on" : "")}>
-                    {item.set.text}
+                    <StatLine text={item.set.text} />
                 </div>
             )}
             {chest.isGear &&
@@ -383,7 +386,7 @@ function ChestCard({
                                     key={change.text}
                                     className={change.good ? "ui-good" : "ui-bad"}
                                 >
-                                    {change.text}
+                                    <StatLine text={change.text} />
                                 </span>
                             ))}
                         </div>

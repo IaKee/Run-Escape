@@ -3,6 +3,7 @@ import { EventView } from "../client/GameStore";
 import { Coins } from "./Coins";
 import { ItemIcon } from "./ItemIcon";
 import { KeyHint } from "./PadHint";
+import { StatLine } from "./StatLine";
 
 type Props = { event: EventView; coins: number; client: GameClient };
 
@@ -27,7 +28,13 @@ export function EventModal({ event, coins, client }: Props): JSX.Element {
                             <ItemIcon objId={option.iconObjId} size={44} />
                             <div className="ui-card-body">
                                 <div className="ui-card-title">{option.title}</div>
-                                {option.text && <div className="ui-card-text">{option.text}</div>}
+                                {option.text && (
+                                    <div className="ui-card-text">
+                                        {option.text.split("\n").map((line, idx) => (
+                                            <StatLine key={idx} text={line} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             {option.price !== undefined && (
                                 <div className="ui-card-cost">

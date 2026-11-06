@@ -141,6 +141,8 @@ export type HudView = {
     rerolls: number;
     // Banishes left (Firemaking)
     banishes: number;
+    // Locks left (Sailing's Set sail), none when unset
+    locks?: number;
     // What skipping the level up's rewards costs, while they can be skipped
     skip?: { cost: number; affordable: boolean };
 };
@@ -318,6 +320,13 @@ export type ChoiceView = {
     banishable: boolean;
     // Banished: greyed out, and can't be picked
     banished: boolean;
+    // Whether it can be locked now: a weapon or passive reward, with a lock
+    // left and none held already, and not the last reward left to pick
+    lockable: boolean;
+    // Locked: greyed out, can't be picked, and comes first next level up
+    locked: boolean;
+    // On offer because it was locked at the last level up
+    carried: boolean;
     // A weapon whose style a raid's bosses all pray against: what it loses against them
     bossPenalty?: string;
 };

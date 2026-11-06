@@ -1,0 +1,19 @@
+.item-tip {
+    padding: 6px 8px;
+    font-size: 14px;
+    color: var(--ui-white);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.item-tip-kind {
+    color: #b8aa8a;
+}
+
+.item-tip-set {
+    color: var(--ui-cyan);
+}
+
+.item-tip-set-on {
+    color: var(--ui-green);
+}
